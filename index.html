@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Ludo — Morgan Okoth</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --red:#D32F2F;--green:#388E3C;--yellow:#F9A825;--blue:#1565C0;
+  --purple:#6A1B9A;--orange:#E65100;
+  --red-l:#FFCDD2;--green-l:#C8E6C9;--yellow-l:#FFF9C4;--blue-l:#BBDEFB;
+  --red-d:#B71C1C;--green-d:#1B5E20;--yellow-d:#E65100;--blue-d:#0D47A1;
+  --gold:#FFD700;--gold2:#FF8C00;
+}
+body{background:radial-gradient(ellipse at center,#1a0800 0%,#060200 100%);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:16px 0 36px;font-family:'Cinzel',serif;overflow-x:hidden;position:relative}
+
+/* Stars */
+.stars{position:fixed;inset:0;pointer-events:none;z-index:0}
+.star{position:absolute;border-radius:50%;background:#fff;
+  animation:twinkle var(--d,3s) ease-in-out infinite var(--dl,0s)}
+@keyframes twinkle{0%,100%{opacity:.1}50%{opacity:.9}}
+
+/* Lobby */
+#lobby{position:relative;z-index:10;display:flex;flex-direction:column;
+  align-items:center;gap:20px;padding:40px 30px;
+  background:linear-gradient(145deg,#9a5014,#5c2a00);
+  border:6px solid #2d1200;border-radius:16px;
+  box-shadow:0 12px 50px rgba(0,0,0,.8);max-width:420px;width:90%}
+#lobby h1{font-family:'Cinzel Decorative',serif;font-size:30px;color:var(--gold);
+  letter-spacing:10px;text-shadow:0 0 20px var(--gold2)}
+#lobby p{color:#FFD7A0;font-size:13px;letter-spacing:2px;text-align:center}
+.lobby-label{color:var(--gold);font-size:12px;letter-spacing:3px;align-self:flex-start}
+.player-count-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.pcb{width:52px;height:52px;border-radius:10px;border:2px solid #FFD700;
+  background:rgba(255,215,0,.1);color:var(--gold);font-size:20px;font-weight:700;
+  cursor:pointer;font-family:'Cinzel',serif;transition:all .2s}
+.pcb:hover,.pcb.sel{background:var(--gold);color:#3d1a00;transform:scale(1.1)}
+.player-setup{width:100%;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:10px}
+.prow .pcolor{width:18px;height:18px;border-radius:50%;flex-shrink:0}
+.prow .pname{flex:1;padding:7px 12px;border-radius:6px;border:1px solid rgba(255,215,0,.3);
+  background:rgba(0,0,0,.3);color:#fff;font-family:'Cinzel',serif;font-size:12px;letter-spacing:1px}
+.prow .ptype{padding:6px 14px;border-radius:6px;border:1px solid rgba(255,215,0,.4);
+  background:rgba(0,0,0,.3);color:var(--gold);font-size:11px;cursor:pointer;
+  font-family:'Cinzel',serif;transition:all .2s}
+.prow .ptype.ai{background:rgba(106,27,154,.4);border-color:#9C27B0;color:#CE93D8}
+.start-btn{padding:14px 40px;background:linear-gradient(135deg,#8B4513,#a0522d);
+  color:var(--gold);border:2px solid var(--gold);border-radius:10px;font-size:16px;
+  font-weight:700;cursor:pointer;letter-spacing:4px;font-family:'Cinzel Decorative',serif;
+  box-shadow:0 4px 20px rgba(255,215,0,.3);transition:all .2s}
+.start-btn:hover{transform:scale(1.05);box-shadow:0 6px 28px rgba(255,215,0,.5)}
+
+/* Game screen */
+#game{display:none;flex-direction:column;align-items:center;position:relative;z-index:5}
+.title{font-family:'Cinzel Decorative',serif;font-size:30px;font-weight:700;
+  color:var(--gold);letter-spacing:10px;margin-bottom:14px;
+  text-shadow:0 0 24px var(--gold2);animation:tglow 3s ease-in-out infinite}
+@keyframes tglow{0%,100%{text-shadow:0 0 24px var(--gold2)}50%{text-shadow:0 0 40px var(--gold),0 0 70px var(--gold2)}}
+
+/* Orbit */
+.wrap{position:relative;display:flex;flex-direction:column;align-items:center}
+.orbit{position:absolute;width:680px;height:680px;top:50%;left:50%;
+  transform:translate(-50%,-50%);pointer-events:none;z-index:10}
+.ol{position:absolute;font-family:'Cinzel Decorative',serif;font-size:15px;font-weight:700;
+  color:var(--gold);text-shadow:0 0 8px var(--gold),0 0 16px var(--gold2);
+  animation:opulse 2.5s ease-in-out infinite}
+@keyframes opulse{0%,100%{opacity:.85}50%{opacity:1;text-shadow:0 0 14px var(--gold),0 0 28px var(--gold2)}}
+
+/* Frame */
+.frame{background:linear-gradient(145deg,#9a5014,#6b3000,#9a5014,#5c2a00,#8B4513);
+  border:8px solid #2d1200;border-radius:16px;padding:20px;position:relative;
+  box-shadow:0 12px 50px rgba(0,0,0,.8),inset 0 2px 12px rgba(255,200,100,.18)}
+.frame::before{content:'';position:absolute;inset:8px;border-radius:10px;pointer-events:none;
+  background:repeating-linear-gradient(95deg,transparent,transparent 18px,rgba(0,0,0,.06) 18px,rgba(0,0,0,.06) 19px)}
+.mn-top,.mn-bot{text-align:center;font-family:'Cinzel Decorative',serif;font-size:11px;
+  font-weight:700;letter-spacing:9px;color:var(--gold);text-shadow:0 0 8px var(--gold2);padding:6px 0}
+.sides{display:flex;align-items:center;gap:10px}
+.sl{writing-mode:vertical-rl;text-orientation:mixed;font-family:'Cinzel Decorative',serif;
+  font-size:9px;letter-spacing:6px;color:var(--gold);font-weight:700;white-space:nowrap;
+  text-shadow:0 0 6px var(--gold2)}
+.sl.L{transform:rotate(180deg)}
+
+/* Board */
+.board{width:510px;height:510px;display:grid;
+  grid-template-columns:repeat(15,1fr);grid-template-rows:repeat(15,1fr);
+  border:3px solid #111;background:#f5e6c8;
+  box-shadow:inset 0 0 20px rgba(0,0,0,.3)}
+.c{border:.5px solid rgba(0,0,0,.18);display:flex;align-items:center;
+  justify-content:center;position:relative;overflow:visible}
+/* Zone colours - Red=top-left, Green=top-right, Yellow=bottom-left, Blue=bottom-right */
+.RZ{background:#D32F2F}.GZ{background:#388E3C}
+.YZ{background:#F9A825}.BZ{background:#1565C0}
+.WC{background:#FAFAFA}.CC{background:#ECEFF1}
+.RL{background:#FFCDD2}.GL{background:#C8E6C9}
+.YL{background:#FFF9C4}.BL{background:#BBDEFB}
+
+/* Home circles */
+.hcirc{width:80%;height:80%;border-radius:50%;display:flex;flex-wrap:wrap;
+  align-items:center;justify-content:center;gap:3px;padding:6px}
+.hR{background:#B71C1C;border:2.5px solid #7f0000;box-shadow:inset 0 2px 6px rgba(0,0,0,.5)}
+.hG{background:#1B5E20;border:2.5px solid #003300;box-shadow:inset 0 2px 6px rgba(0,0,0,.5)}
+.hY{background:#E65100;border:2.5px solid #bf3600;box-shadow:inset 0 2px 6px rgba(0,0,0,.5)}
+.hB{background:#0D47A1;border:2.5px solid #002171;box-shadow:inset 0 2px 6px rgba(0,0,0,.5)}
+
+/* Tokens */
+.tok{width:13px;height:13px;border-radius:50%;flex-shrink:0;
+  border:2px solid rgba(255,255,255,.55);cursor:pointer;
+  box-shadow:0 1px 5px rgba(0,0,0,.6),inset 0 1px 3px rgba(255,255,255,.4);
+  transition:transform .15s,box-shadow .15s;
+  animation:tpulse 2.5s ease-in-out infinite}
+.tok.clickable{cursor:pointer;animation:tpulse 2.5s ease-in-out infinite, highlight .7s ease-in-out infinite alternate}
+@keyframes highlight{0%{box-shadow:0 0 0 2px rgba(255,255,255,.3)}100%{box-shadow:0 0 0 4px rgba(255,255,255,.9),0 0 10px rgba(255,255,255,.6)}}
+.tok:hover{transform:scale(1.5)}
+@keyframes tpulse{0%,100%{box-shadow:0 1px 5px rgba(0,0,0,.6)}50%{box-shadow:0 0 8px rgba(255,255,255,.5)}}
+.tR{background:radial-gradient(circle at 35% 30%,#ff8a80,#c62828)}
+.tG{background:radial-gradient(circle at 35% 30%,#69f0ae,#2e7d32)}
+.tY{background:radial-gradient(circle at 35% 30%,#fff176,#f57f17)}
+.tB{background:radial-gradient(circle at 35% 30%,#82b1ff,#1565c0)}
+
+/* Safe star */
+.si{width:10px;height:10px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  pointer-events:none;background:#FF6F00;
+  clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+
+/* Controls */
+.ctrl{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:14px}
+.crow{display:flex;align-items:center;gap:18px}
+
+/* Flying dice layer — fullscreen overlay */
+#diceStage{
+  position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;
+}
+/* The flying die SVG */
+#flyDice{
+  position:absolute;
+  width:72px;height:72px;
+  cursor:pointer;pointer-events:all;
+  touch-action:none;
+  filter:drop-shadow(0 6px 16px rgba(0,0,0,.6));
+  transform-origin:36px 36px;
+  transition:filter .4s;
+}
+#flyDice.idle{
+  /* resting glow pulse */
+  animation:idleGlow 2s ease-in-out infinite;
+}
+@keyframes idleGlow{
+  0%,100%{filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
+  50%{filter:drop-shadow(0 4px 20px var(--cur-clr,#FFD700))}
+}
+/* Tap ripple */
+.tap-ripple{
+  position:fixed;border-radius:50%;pointer-events:none;
+  width:80px;height:80px;margin:-40px 0 0 -40px;
+  background:rgba(255,215,0,.35);
+  animation:rippleOut .6s ease-out forwards;z-index:9998;
+}
+@keyframes rippleOut{
+  0%{transform:scale(0);opacity:1}
+  100%{transform:scale(3.5);opacity:0}
+}
+.dval{font-size:26px;font-weight:700;min-width:34px;text-align:center;
+  font-family:'Cinzel',serif;transition:color .4s,text-shadow .4s}
+.rbtn{padding:11px 26px;background:linear-gradient(135deg,#8B4513,#a0522d);
+  color:var(--gold);border:2px solid var(--gold);border-radius:8px;font-size:13px;
+  font-weight:700;cursor:pointer;letter-spacing:3px;font-family:'Cinzel',serif;
+  box-shadow:0 4px 16px rgba(0,0,0,.5);transition:all .15s}
+.rbtn:hover{transform:scale(1.05)}.rbtn:active{transform:scale(.97)}
+.rbtn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.pills{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.pill{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;
+  letter-spacing:2px;opacity:.38;transition:all .25s;border:2px solid transparent;
+  font-family:'Cinzel',serif}
+.pill.on{opacity:1;transform:scale(1.1);border-color:var(--gold);box-shadow:0 0 12px rgba(255,215,0,.4)}
+.pill.ai-badge::after{content:' 🤖';font-size:9px}
+.pR{background:var(--red);color:#fff}.pG{background:var(--green);color:#fff}
+.pY{background:var(--yellow);color:#333}.pB{background:var(--blue);color:#fff}
+.msg{color:var(--gold);font-size:13px;letter-spacing:2px;min-height:18px;
+  text-align:center;font-family:'Cinzel',serif;text-shadow:0 0 8px var(--gold2)}
+.credit{margin-top:18px;font-family:'Cinzel Decorative',serif;font-size:10px;
+  letter-spacing:5px;color:rgba(255,215,0,.35);position:relative;z-index:5}
+.instr{color:rgba(255,215,0,.6);font-size:11px;letter-spacing:1.5px;margin-top:6px;text-align:center}
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+
+<!-- LOBBY -->
+<div id="lobby">
+  <h1>LUDO</h1>
+  <p>by Morgan Okoth</p>
+  <div class="lobby-label">NUMBER OF PLAYERS</div>
+  <div class="player-count-btns">
+    <button class="pcb" onclick="selectCount(2)">2</button>
+    <button class="pcb" onclick="selectCount(3)">3</button>
+    <button class="pcb sel" onclick="selectCount(4)">4</button>
+    <button class="pcb" onclick="selectCount(5)">5</button>
+    <button class="pcb" onclick="selectCount(6)">6</button>
+  </div>
+  <div class="player-setup" id="playerSetup"></div>
+  <button class="start-btn" onclick="startGame()">START GAME</button>
+</div>
+
+<!-- Flying dice stage (fullscreen) -->
+<div id="diceStage">
+  <svg id="flyDice" class="idle" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"
+       onclick="onDiceClick(event)" ontouchstart="onDiceTouch(event)">
+    <rect id="diceBg" x="2" y="2" width="60" height="60" rx="12"
+          fill="#fff" stroke="#5c2a00" stroke-width="3"/>
+    <g id="diceDots"></g>
+  </svg>
+</div>
+
+<!-- GAME -->
+<div id="game">
+  <div class="title">LUDO</div>
+  <div class="wrap">
+    <div class="orbit" id="orbit"></div>
+    <div class="frame">
+      <div class="mn-top">✦ MORGAN OKOTH ✦</div>
+      <div class="sides">
+        <div class="sl L">✦ MORGAN OKOTH ✦</div>
+        <div class="board" id="board"></div>
+        <div class="sl">✦ MORGAN OKOTH ✦</div>
+      </div>
+      <div class="mn-bot">✦ MORGAN OKOTH ✦</div>
+    </div>
+  </div>
+  <div class="ctrl">
+    <div class="crow">
+      <!-- Tap zone button — tapping anywhere here also rolls -->
+      <div id="tapZone" onclick="onDiceClick(event)" ontouchstart="onDiceTouch(event)"
+           style="width:90px;height:90px;border-radius:16px;border:2px dashed rgba(255,215,0,.4);
+                  display:flex;align-items:center;justify-content:center;cursor:pointer;
+                  background:rgba(255,215,0,.05);color:rgba(255,215,0,.5);
+                  font-size:10px;letter-spacing:2px;font-family:'Cinzel',serif;flex-direction:column;gap:4px">
+        <span style="font-size:22px">🎲</span>
+        <span>TAP</span>
+      </div>
+      <div class="dval" id="dval" style="color:var(--gold)">-</div>
+      <button class="rbtn" id="rollBtn" onclick="onDiceClick(event)">ROLL</button>
+    </div>
+    <div class="pills" id="pills"></div>
+    <div class="msg" id="msg">Roll to start!</div>
+    <div class="instr" id="instr">Tap the die or ROLL button</div>
+  </div>
+</div>
+<div class="credit">© MORGANENTP · KISII UNIVERSITY</div>
+
+<script>
+/* ══ STARS ══ */
+const starsEl=document.getElementById('stars');
+for(let i=0;i<80;i++){
+  const s=document.createElement('div');s.className='star';
+  const z=Math.random()*2.5+.5;
+  s.style.cssText=`width:${z}px;height:${z}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--d:${2+Math.random()*4}s;--dl:${Math.random()*4}s`;
+  starsEl.appendChild(s);
+}
+
+/* ══ ORBIT ══ */
+const orbitEl=document.getElementById('orbit');
+const ONAME='MORGANENTP',OR=310,OCX=340,OCY=340;
+const oletters=ONAME.split('').map((ch,i)=>{
+  const d=document.createElement('div');d.className='ol';d.textContent=ch;
+  d.style.animationDelay=(i/ONAME.length*2.5)+'s';
+  orbitEl.appendChild(d);return d;
+});
+let oa=0;
+(function anim(){
+  oa+=0.005;
+  oletters.forEach((el,i)=>{
+    const a=oa+(i/ONAME.length)*2*Math.PI;
+    el.style.left=(OCX+OR*Math.cos(a)-8)+'px';
+    el.style.top=(OCY+OR*Math.sin(a)-8)+'px';
+  });
+  requestAnimationFrame(anim);
+})();
+
+/* ══ PLAYER CONFIGS (up to 6, always 4 on board) ══ */
+// Standard 4-position Ludo. Extra players share positions with AI counterparts.
+const PCONF=[
+  {id:'red',   name:'Red',    cls:'pR', hcls:'hR', tcls:'tR', color:'#D32F2F', bg:'#fff0f0', stroke:'#D32F2F', dotClr:'#D32F2F'},
+  {id:'green', name:'Green',  cls:'pG', hcls:'hG', tcls:'tG', color:'#388E3C', bg:'#f0fff4', stroke:'#388E3C', dotClr:'#388E3C'},
+  {id:'yellow',name:'Yellow', cls:'pY', hcls:'hY', tcls:'tY', color:'#F9A825', bg:'#fffdf0', stroke:'#F9A825', dotClr:'#d48000'},
+  {id:'blue',  name:'Blue',   cls:'pB', hcls:'hB', tcls:'tB', color:'#1565C0', bg:'#f0f4ff', stroke:'#1565C0', dotClr:'#1565C0'},
+];
+
+/* ══ LOBBY ══ */
+let chosenCount=4;
+let playerConfigs=[];
+
+function selectCount(n){
+  chosenCount=n;
+  document.querySelectorAll('.pcb').forEach(b=>b.classList.remove('sel'));
+  event.target.classList.add('sel');
+  renderSetup(n);
+}
+
+function renderSetup(n){
+  const setup=document.getElementById('playerSetup');
+  setup.innerHTML='';
+  playerConfigs=[];
+  for(let i=0;i<4;i++){
+    const pc=PCONF[i];
+    const isHuman= i<n;
+    const row=document.createElement('div');row.className='prow';
+    row.innerHTML=`
+      <div class="pcolor" style="background:${pc.color}"></div>
+      <input class="pname" id="pname${i}" value="${isHuman?pc.name+' (You)':'AI '+pc.name}" ${isHuman?'':'readonly'}/>
+      <button class="ptype ${isHuman?'':'ai'}" id="ptype${i}" onclick="toggleType(${i})">${isHuman?'HUMAN':'AI'}</button>
+    `;
+    setup.appendChild(row);
+    playerConfigs.push({...pc, human:isHuman, nameVal:isHuman?pc.name:'AI '+pc.name});
+  }
+}
+
+function toggleType(i){
+  const btn=document.getElementById('ptype'+i);
+  const inp=document.getElementById('pname'+i);
+  const isNowAI=btn.textContent==='HUMAN';
+  btn.textContent=isNowAI?'AI':'HUMAN';
+  btn.classList.toggle('ai',isNowAI);
+  inp.readOnly=isNowAI;
+  if(isNowAI) inp.value='AI '+PCONF[i].name;
+  else inp.value=PCONF[i].name;
+  playerConfigs[i].human=!isNowAI;
+}
+
+renderSetup(4); // default
+
+/* ══ START GAME ══ */
+function startGame(){
+  // Finalise names & types
+  for(let i=0;i<4;i++){
+    playerConfigs[i].displayName=document.getElementById('pname'+i).value||PCONF[i].name;
+    playerConfigs[i].human=document.getElementById('ptype'+i).textContent==='HUMAN';
+  }
+  document.getElementById('lobby').style.display='none';
+  document.getElementById('game').style.display='flex';
+  initGame();
+}
+
+/* ══ BOARD BUILD ══ */
+const boardEl=document.getElementById('board');
+const CELLS=[];
+
+function cellCls(r,c){
+  const iR=(r<=5&&c<=5),iG=(r<=5&&c>=9),iY=(r>=9&&c<=5),iB=(r>=9&&c>=9);
+  if(iR)return'RZ';if(iG)return'GZ';if(iY)return'YZ';if(iB)return'BZ';
+  if(r>=6&&r<=8&&c>=6&&c<=8)return'CC';
+  if(r===7&&c>=1&&c<=6)return'RL';
+  if(c===7&&r>=1&&r<=6)return'GL';
+  if(r===7&&c>=8&&c<=13)return'BL';
+  if(c===7&&r>=8&&r<=13)return'YL';
+  return'WC';
+}
+for(let r=0;r<15;r++){
+  CELLS[r]=[];
+  for(let c=0;c<15;c++){
+    const d=document.createElement('div');
+    d.className='c '+cellCls(r,c);d.id=`C${r}_${c}`;
+    boardEl.appendChild(d);CELLS[r][c]=d;
+  }
+}
+
+/* Home circles */
+function mkHC(cls,r,c){
+  const d=document.createElement('div');d.className='hcirc '+cls;
+  CELLS[r][c].appendChild(d);return d;
+}
+const HC={
+  red:mkHC('hR',2,2),green:mkHC('hG',2,10),
+  yellow:mkHC('hY',10,2),blue:mkHC('hB',10,10)
+};
+
+/* Safe stars */
+[[6,2],[2,6],[8,2],[2,8],[6,12],[12,6],[8,12],[12,8]].forEach(([r,c])=>{
+  const s=document.createElement('div');s.className='si';CELLS[r][c].appendChild(s);
+});
+
+/* Entry arrows */
+function arrow(r,c,dir,col){
+  const d=document.createElement('div');
+  const h='border-top:5px solid transparent;border-bottom:5px solid transparent;';
+  const v='border-left:5px solid transparent;border-right:5px solid transparent;';
+  if(dir==='R')d.style.cssText=`width:0;height:0;${h}border-left:9px solid ${col}`;
+  if(dir==='L')d.style.cssText=`width:0;height:0;${h}border-right:9px solid ${col}`;
+  if(dir==='D')d.style.cssText=`width:0;height:0;${v}border-top:9px solid ${col}`;
+  if(dir==='U')d.style.cssText=`width:0;height:0;${v}border-bottom:9px solid ${col}`;
+  CELLS[r][c].appendChild(d);
+}
+arrow(6,1,'R','#C62828');   // Red   → enters [6,1]  going RIGHT
+arrow(1,8,'D','#2E7D32');   // Green → enters [1,8]  going DOWN
+arrow(13,6,'U','#F9A825');  // Yellow→ enters [13,6] going UP   (yard=bottom-left)
+arrow(8,13,'L','#1565C0');  // Blue  → enters [8,13] going LEFT (yard=bottom-right)
+
+/* Center star */
+CELLS[7][7].style.background='#ECEFF1';
+const cs=document.createElement('div');
+cs.style.cssText='width:30px;height:30px;clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);background:conic-gradient(#D32F2F 0 25%,#388E3C 25% 50%,#F9A825 50% 75%,#1565C0 75%)';
+CELLS[7][7].appendChild(cs);
+
+/* ══ PATH SYSTEM (fully verified) ══ */
+const RING=[
+  [6,1],[6,2],[6,3],[6,4],[6,5],
+  [5,6],[4,6],[3,6],[2,6],[1,6],[0,6],
+  [0,7],[0,8],
+  [1,8],[2,8],[3,8],[4,8],[5,8],
+  [6,9],[6,10],[6,11],[6,12],[6,13],
+  [7,14],[8,14],
+  [8,13],[8,12],[8,11],[8,10],[8,9],
+  [9,8],[10,8],[11,8],[12,8],[13,8],
+  [14,8],[14,7],[14,6],
+  [13,6],[12,6],[11,6],[10,6],[9,6],
+  [8,5],[8,4],[8,3],[8,2],[8,1],
+  [8,0],[7,0],[6,0],
+];
+const RN=RING.length; // 51
+
+const HS={
+  red:   [[7,1],[7,2],[7,3],[7,4],[7,5],[7,6],[7,7]],
+  green: [[1,7],[2,7],[3,7],[4,7],[5,7],[6,7],[7,7]],
+  yellow:[[13,7],[12,7],[11,7],[10,7],[9,7],[8,7],[7,7]],
+  blue:  [[7,13],[7,12],[7,11],[7,10],[7,9],[7,8],[7,7]],
+};
+
+// FIXED entry indices: red=0, green=13, yellow=25, blue=38
+const EI={red:0,green:13,yellow:38,blue:25};
+const TOTAL=RN+7; // 58
+
+function buildPath(pid){
+  const ei=EI[pid],path=[null];
+  for(let i=0;i<RN;i++) path.push(RING[(ei+i)%RN]);
+  HS[pid].forEach(c=>path.push(c));
+  return path;
+}
+const PATH={};
+['red','green','yellow','blue'].forEach(p=>{PATH[p]=buildPath(p);});
+
+/* Safe cells */
+const SAFE=new Set([
+  '6,1','1,8','8,13','13,6',
+  '6,2','2,6','8,2','2,8','6,12','12,6','8,12','12,8'
+]);
+function isSafe(r,c){return SAFE.has(r+','+c)}
+
+/* ══ FLYING DIE PHYSICS ══ */
+const flyDice=document.getElementById('flyDice');
+const FACES={
+  1:[[32,32]],
+  2:[[18,18],[46,46]],
+  3:[[18,18],[32,32],[46,46]],
+  4:[[18,18],[46,18],[18,46],[46,46]],
+  5:[[18,18],[46,18],[32,32],[18,46],[46,46]],
+  6:[[18,14],[46,14],[18,32],[46,32],[18,50],[46,50]],
+};
+let diceX=60,diceY=60;
+
+// Position die absolutely on screen
+function posDie(x,y,rot){
+  flyDice.style.left=x+'px';
+  flyDice.style.top=y+'px';
+  flyDice.style.transform='rotate('+rot+'deg)';
+}
+
+// Park die at bottom-right when idle
+function parkDie(){
+  const vw=window.innerWidth,vh=window.innerHeight;
+  diceX=Math.min(vw-90,vw-90);diceY=Math.max(vh-120,vh-120);
+  posDie(diceX,diceY,0);
+}
+
+// Draw face
+function showDiceFace(v,pid){
+  const pc=PCONF.find(p=>p.id===pid)||PCONF[0];
+  const g=document.getElementById('diceDots');
+  g.innerHTML='';
+  (FACES[v]||FACES[1]).forEach(([cx,cy])=>{
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',cx);c.setAttribute('cy',cy);
+    c.setAttribute('r','5.5');c.setAttribute('fill',pc.dotClr);
+    g.appendChild(c);
+  });
+  document.getElementById('dval').textContent=v;
+  document.getElementById('dval').style.color=pc.color;
+  document.getElementById('dval').style.textShadow='0 0 10px '+pc.color;
+  document.getElementById('diceBg').setAttribute('fill',pc.bg);
+  document.getElementById('diceBg').setAttribute('stroke',pc.stroke);
+  flyDice.style.filter=`drop-shadow(0 4px 20px ${pc.color}cc)`;
+  document.documentElement.style.setProperty('--cur-clr',pc.color);
+  const btn=document.querySelector('.rbtn');
+  if(btn){btn.style.borderColor=pc.color;btn.style.boxShadow='0 4px 20px '+pc.color+'88';}
+}
+
+// Tap ripple
+function spawnRipple(x,y){
+  const r=document.createElement('div');r.className='tap-ripple';
+  r.style.left=x+'px';r.style.top=y+'px';
+  document.body.appendChild(r);
+  setTimeout(()=>r.remove(),700);
+}
+
+// Main throw physics
+function throwDie(fromX,fromY,finalVal,pid,cb){
+  flyDice.classList.remove('idle');
+  const vw=window.innerWidth,vh=window.innerHeight;
+  let x=fromX,y=fromY;
+  // Launch toward random screen centre area
+  const tx=vw*0.3+Math.random()*vw*0.4;
+  const ty=vh*0.2+Math.random()*vh*0.4;
+  let vx=(tx-x)/16+(Math.random()-.5)*14;
+  let vy=(ty-y)/16+(Math.random()-.5)*10-4;
+  let rot=Math.random()*720-360;
+  let rotV=(Math.random()>.5?1:-1)*(12+Math.random()*22);
+  const gravity=0.65,friction=0.78;
+  let bounces=0,frame=0,spinF=0,done=false;
+
+  function step(){
+    if(done)return;
+    frame++;spinF++;
+    // Tumble face every 3 frames
+    if(spinF%3===0) showDiceFace(Math.ceil(Math.random()*6),pid);
+    vy+=gravity; x+=vx; y+=vy; rot+=rotV;
+    // Bounce walls
+    if(x<0){x=0;vx=Math.abs(vx)*friction;rotV*=-0.8;}
+    if(x>vw-72){x=vw-72;vx=-Math.abs(vx)*friction;rotV*=-0.8;}
+    if(y<0){y=0;vy=Math.abs(vy)*0.6;}
+    if(y>vh-80){
+      y=vh-80;
+      vy=-Math.abs(vy)*0.55;
+      vx*=friction;rotV*=0.65;
+      bounces++;
+    }
+    posDie(x,y,rot);
+    const spd=Math.sqrt(vx*vx+vy*vy);
+    if(frame>60||(bounces>=3&&spd<1.2)){
+      done=true;
+      showDiceFace(finalVal,pid);
+      posDie(x,y,Math.round(rot/90)*90);
+      flyDice.classList.add('idle');
+      diceX=x;diceY=y;
+      setTimeout(cb,350);
+      return;
+    }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function onDiceTouch(e){
+  e.preventDefault();
+  const t=e.touches[0];
+  spawnRipple(t.clientX,t.clientY);
+  triggerRoll(t.clientX-36,t.clientY-36);
+}
+function onDiceClick(e){
+  if(e&&e.clientX){spawnRipple(e.clientX,e.clientY);}
+  triggerRoll(diceX,diceY);
+}
+
+function triggerRoll(fromX,fromY){
+  if(BUSY||OVER||PHASE!=='roll')return;
+  BUSY=true;
+  document.getElementById('rollBtn').disabled=true;
+  const pid=PLAYERS[CUR];
+  const finalVal=Math.ceil(Math.random()*6);
+  throwDie(fromX,fromY,finalVal,pid,()=>{
+    DIE=finalVal;
+    document.getElementById('rollBtn').disabled=false;
+    BUSY=false;
+    setTimeout(()=>afterRoll(pid),200);
+  });
+}
+
+function aiRollDie(pid,cb){
+  BUSY=true;
+  const vw=window.innerWidth,vh=window.innerHeight;
+  const fx=Math.random()*(vw-100)+20,fy=40+Math.random()*(vh*0.25);
+  const finalVal=Math.ceil(Math.random()*6);
+  throwDie(fx,fy,finalVal,pid,()=>{DIE=finalVal;BUSY=false;cb(finalVal);});
+}
+
+/* ══ GAME STATE ══ */
+let PLAYERS=[],STATE={},CUR=0,DIE=0,BUSY=false,OVER=false,PHASE='roll';
+
+function msg(m){document.getElementById('msg').textContent=m}
+function instr(m){document.getElementById('instr').textContent=m}
+
+function initGame(){
+  PLAYERS=playerConfigs.map(p=>p.id);
+  STATE={};
+  PLAYERS.forEach(pid=>{
+    STATE[pid]=[0,1,2,3].map(()=>({step:0,done:false,el:null}));
+    STATE[pid].forEach(t=>{
+      t.el=document.createElement('div');
+      t.el.className='tok '+PCONF.find(p=>p.id===pid).tcls;
+      HC[pid].appendChild(t.el);
+    });
+  });
+  CUR=0;DIE=0;BUSY=false;OVER=false;PHASE='roll';
+  buildPills();
+  parkDie();
+  showDiceFace(1,PLAYERS[0]);
+  updateUI();
+  msg(displayName(PLAYERS[0])+' — Tap die or ROLL!');
+  instr('Tap the flying die anywhere on screen');
+}
+
+function displayName(pid){return playerConfigs.find(p=>p.id===pid).displayName;}
+function isHuman(pid){return playerConfigs.find(p=>p.id===pid).human;}
+
+function buildPills(){
+  const pills=document.getElementById('pills');pills.innerHTML='';
+  PLAYERS.forEach(pid=>{
+    const pc=PCONF.find(p=>p.id===pid);
+    const d=document.createElement('div');
+    d.className='pill '+pc.cls+(isHuman(pid)?'':' ai-badge');
+    d.id='pp-'+pid;d.textContent=displayName(pid);
+    pills.appendChild(d);
+  });
+}
+
+function updateUI(){
+  PLAYERS.forEach(pid=>{
+    const el=document.getElementById('pp-'+pid);
+    if(el) el.classList.toggle('on',pid===PLAYERS[CUR]);
+  });
+  showDiceFace(DIE||1,PLAYERS[CUR]);
+}
+
+function afterRoll(pid){
+  const toks=STATE[pid];
+  const inYard=toks.filter(t=>t.step===0&&!t.done);
+  const onBoard=toks.filter(t=>t.step>0&&!t.done);
+  const movable=onBoard.filter(t=>t.step+DIE<=TOTAL);
+
+  // Can player do anything?
+  const canEnter=(DIE===6&&inYard.length>0);
+  const canMove=(movable.length>0);
+
+  if(!canEnter&&!canMove){
+    // Auto-skip — nothing possible
+    msg(displayName(pid)+' rolled '+DIE+' — no valid move. Skipping...');
+    instr('');
+    setTimeout(nextTurn,1200);
+    return;
+  }
+
+  if(!isHuman(pid)){
+    msg(displayName(pid)+' (AI) rolling...');
+    setTimeout(()=>aiRollDie(pid,()=>afterRoll(pid)),700);
+    return;
+  }
+
+  // Human: highlight valid tokens and wait for click
+  PHASE='pick';
+  highlightTokens(pid,canEnter,canMove,inYard,movable);
+  if(canEnter&&canMove) msg(displayName(pid)+' rolled '+DIE+' — click a token!');
+  else if(canEnter) msg(displayName(pid)+' rolled 6 — click a token to enter!');
+  else msg(displayName(pid)+' rolled '+DIE+' — click a token to move!');
+  instr('Click a glowing token to move it');
+}
+
+function highlightTokens(pid,canEnter,canMove,inYard,movable){
+  // Remove all highlights first
+  clearHighlights();
+  if(canEnter){
+    inYard.forEach(t=>{
+      t.el.classList.add('clickable');
+      t.el.onclick=()=>pickToken(pid,t,'enter');
+    });
+  }
+  if(canMove){
+    movable.forEach(t=>{
+      t.el.classList.add('clickable');
+      t.el.onclick=()=>pickToken(pid,t,'move');
+    });
+  }
+}
+
+function clearHighlights(){
+  document.querySelectorAll('.tok').forEach(el=>{
+    el.classList.remove('clickable');
+    el.onclick=null;
+  });
+}
+
+function pickToken(pid,tok,action){
+  if(PHASE!=='pick') return;
+  PHASE='moving';
+  clearHighlights();
+  instr('');
+  if(action==='enter'){
+    enterToken(pid,tok);
+  } else {
+    msg(displayName(pid)+' moves '+DIE+' steps...');
+    animate(pid,tok,DIE,()=>afterMove(pid,tok));
+  }
+}
+
+/* ══ AI PLAYS ══ */
+function aiPlay(pid,canEnter,canMove,inYard,movable){
+  PHASE='moving';
+  if(canEnter){
+    const tok=inYard[0];
+    enterToken(pid,tok);
+    return;
+  }
+  // Pick smartest token: capture > furthest ahead
+  let best=movable[0];
+  for(const t of movable){
+    const ns=t.step+DIE;
+    if(ns<=RN){
+      const pos=PATH[pid][ns];
+      const captures=PLAYERS.some(enemy=>{
+        if(enemy===pid)return false;
+        return STATE[enemy].some(et=>et.step>0&&!et.done&&PATH[enemy][et.step]&&PATH[enemy][et.step][0]===pos[0]&&PATH[enemy][et.step][1]===pos[1]&&!isSafe(pos[0],pos[1]));
+      });
+      if(captures){best=t;break;}
+    }
+    if(t.step>best.step) best=t;
+  }
+  msg(displayName(pid)+' (AI) moves '+DIE+' steps...');
+  animate(pid,best,DIE,()=>afterMove(pid,best));
+}
+
+/* ══ ENTER TOKEN ══ */
+function enterToken(pid,tok){
+  tok.step=1;
+  const pos=PATH[pid][1];
+  placeToken(tok,pos[0],pos[1]);
+  capture(pid,tok,pos[0],pos[1]);
+  msg(displayName(pid)+' rolls 6 — token enters!');
+  setTimeout(()=>{
+    PHASE='roll';
+    if(!isHuman(pid)){
+      msg(displayName(pid)+' (AI) rolls again...');
+      setTimeout(()=>aiRollDie(pid,()=>afterRoll(pid)),800);
+    } else {
+      msg(displayName(pid)+' rolls again (6)!');
+      instr('Tap or click ROLL for your bonus roll');
+    }
+  },600);
+}
+
+/* ══ ANIMATE ══ */
+function placeToken(tok,r,c){
+  if(tok.el.parentElement) tok.el.parentElement.removeChild(tok.el);
+  CELLS[r][c].appendChild(tok.el);
+}
+function toYard(tok,pid){
+  tok.step=0;tok.done=false;
+  if(tok.el.parentElement) tok.el.parentElement.removeChild(tok.el);
+  HC[pid].appendChild(tok.el);
+}
+
+function animate(pid,tok,steps,cb){
+  let moved=0;
+  function step(){
+    if(moved>=steps){cb();return;}
+    tok.step++;
+    if(tok.step>TOTAL){tok.step=TOTAL;cb();return;}
+    const pos=PATH[pid][tok.step];
+    placeToken(tok,pos[0],pos[1]);
+    moved++;
+    setTimeout(step,220);
+  }
+  step();
+}
+
+function afterMove(pid,tok){
+  if(tok.step>=TOTAL){
+    tok.done=true;
+    if(tok.el.parentElement) tok.el.parentElement.removeChild(tok.el);
+    const fin=STATE[pid].filter(t=>t.done).length;
+    if(STATE[pid].every(t=>t.done)){
+      msg('🏆 '+displayName(pid)+' WINS! Congratulations!');
+      OVER=true;PHASE='done';return;
+    }
+    msg(displayName(pid)+' token home! ('+fin+'/4)');
+  } else {
+    const pos=PATH[pid][tok.step];
+    if(pos) capture(pid,tok,pos[0],pos[1]);
+  }
+  // Extra roll on 6
+  if(DIE===6){
+    PHASE='roll';
+    if(!isHuman(pid)){
+      msg(displayName(pid)+' (AI) rolls again...');
+      setTimeout(()=>aiRollDie(pid,()=>afterRoll(pid)),900);
+    } else {
+      msg(displayName(pid)+' rolls again (6)!');
+      instr('Click ROLL for your bonus roll');
+    }
+  } else {
+    PHASE='done';
+    setTimeout(nextTurn,600);
+  }
+}
+
+/* ══ CAPTURE ══ */
+function capture(pid,tok,r,c){
+  if(isSafe(r,c)) return;
+  PLAYERS.forEach(enemy=>{
+    if(enemy===pid) return;
+    STATE[enemy].forEach(et=>{
+      if(et.step===0||et.done) return;
+      const ep=PATH[enemy][et.step];
+      if(ep&&ep[0]===r&&ep[1]===c){
+        toYard(et,enemy);
+        msg(displayName(pid)+' captures '+displayName(enemy)+'! Sent to yard! 💥');
+      }
+    });
+  });
+}
+
+/* ══ NEXT TURN ══ */
+function nextTurn(){
+  if(OVER) return;
+  let tries=0;
+  do{CUR=(CUR+1)%PLAYERS.length;tries++;}
+  while(STATE[PLAYERS[CUR]].every(t=>t.done)&&tries<PLAYERS.length);
+  PHASE='roll';
+  updateUI();
+  const pid=PLAYERS[CUR];
+  const anyOut=STATE[pid].some(t=>t.step>0&&!t.done);
+  msg(displayName(pid)+(isHuman(pid)?'':' (AI)')+' — '+(anyOut?'Roll to move!':'Roll a 6 to enter!'));
+  instr(isHuman(pid)?'Tap the die or press ROLL':'AI is thinking...');
+  if(!isHuman(pid)){
+    setTimeout(()=>aiRollDie(pid,()=>afterRoll(pid)),1000);
+  }
+}
+
+/* ══ INIT ══ */
+// Park die off-screen until game starts
+flyDice.style.left='-200px'; flyDice.style.top='-200px';
+showDiceFace(1,'red');
+</script>
+</body>
+</html>

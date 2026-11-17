@@ -103,4 +103,12 @@ export const sfx = {
   skip() {
     tone(300, 0.2, "sine", 0.15, 0, 200);
   },
+  footstep() {
+    noise(0.07, 320 + Math.random() * 80, 0.22);
+    tone(90 + Math.random() * 20, 0.06, "sine", 0.08);
+  },
+  /** Chair legs scraping across the rug. */
+  chair() {
+    for (let i = 0; i < 9; i++) noise(0.08, 500 + Math.random() * 300, 0.12, i * 0.08);
+  },
 };

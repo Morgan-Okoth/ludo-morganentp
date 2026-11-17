@@ -1,7 +1,8 @@
 /** Entry point: menus, local setup, online lobby, and screen flow. */
 import { MAX_PLAYERS, type Color, type GameState, armCountFor, colorsFor } from "../shared/rules";
 import { speed } from "./anim";
-import { loadAssets } from "./assets";
+import { loadAssets, loadCharacters } from "./assets";
+import { Room } from "./intro";
 import { unlock } from "./audio";
 import { Hud } from "./hud";
 import { COLOR_HEX } from "./layout";
@@ -12,13 +13,16 @@ import { GameView, type SeatInfo } from "./view";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-type Screen = "menu" | "online" | "game";
+type Screen = "intro" | "menu" | "online" | "game";
 
 function show(screen: Screen) {
   $("menu").classList.toggle("hidden", screen !== "menu");
   $("online").classList.toggle("hidden", screen !== "online");
   hud.show(screen === "game");
   document.body.classList.toggle("playing", screen === "game");
+  // The players and the hanging lamp belong to the room, not the game view.
+  tableRoom.setPeopleVisible(screen !== "game");
+  stage.lamp.visible = screen !== "game";
 }
 
 // ---- stars backdrop (kept from the original design) ----
@@ -40,7 +44,7 @@ const hud = new Hud();
 const assets = await loadAssets();
 const stage = new Stage($("stage"), assets);
 const view = new GameView(stage, hud);
-document.body.classList.add("ready");
+const tableRoom = new Room(stage, assets, await loadCharacters());
 console.info(`pawn model: ${assets.pawnSource}`);
 
 let local: LocalMatch | null = null;
@@ -50,7 +54,7 @@ let lastLocalSeats: SeatInfo[] = [];
 function backdrop(colors: Color[]) {
   view.preview(colors, armCountFor(colors.length));
   stage.spin = 0.08;
-  void stage.lookFrom(0, false);
+  if (!stage.inMenuView) void stage.menuView(true, 1400);
 }
 
 // ---------------------------------------------------------------- local menu
@@ -324,7 +328,33 @@ function renderSeats(m: LobbyMsg) {
 
 // ---------------------------------------------------------------- boot
 renderSetup();
-const invited = (new URLSearchParams(location.search).get("room") ?? "").toUpperCase();
+// Compile every shader up front so the opening scene does not stutter.
+await stage.renderer.compileAsync(stage.scene, stage.camera).catch(() => {});
+document.body.classList.add("ready");
+
+// Opening scene. Skipped for tests (?speed), ?intro=0 and reduced-motion users.
+const introOn =
+  !(speedParam > 0) && params.get("intro") !== "0" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (introOn) {
+  show("intro");
+  document.body.classList.add("cine");
+  const intro = tableRoom.play(
+    () => document.body.classList.add("cine-title"),
+    () => document.body.classList.remove("cine-title"),
+  );
+  const skip = () => intro.skip();
+  $("skipIntro").addEventListener("click", skip);
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape" || e.key === "Enter") skip();
+  };
+  window.addEventListener("keydown", onKey);
+  await intro.done;
+  window.removeEventListener("keydown", onKey);
+  document.body.classList.remove("cine", "cine-title");
+  stage.spin = 0.08;
+}
+
+const invited = (params.get("room") ?? "").toUpperCase();
 if (/^[A-Z0-9]{5}$/.test(invited)) {
   ($("onCode") as HTMLInputElement).value = invited;
   show("online");

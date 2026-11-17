@@ -3,10 +3,10 @@
  * versions when a file is missing or fails to parse.
  */
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { type GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { diceCupGeometry, pawnGeometry, trophyGroup } from "./procedural";
+import { chairGroup, diceCupGeometry, pawnGeometry, trophyGroup } from "./procedural";
 
 export interface Assets {
   /** Unit-height pawn, base centred on the origin. */
@@ -15,6 +15,8 @@ export interface Assets {
   /** Returns a fresh trophy object (keeps Clay materials if present). */
   trophy: () => THREE.Object3D;
   dicecup: () => THREE.Object3D;
+  /** Dining chair, 1 unit tall, front facing +Z, seat at CHAIR_SEAT. */
+  chair: () => THREE.Object3D;
 }
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -28,16 +30,40 @@ function available(): Promise<string[]> {
   return manifest;
 }
 
-async function loadGltf(name: string): Promise<THREE.Group | null> {
+async function loadFull(name: string): Promise<GLTF | null> {
   const url = `/models/${name}.glb`;
   try {
     if (!(await available()).includes(name)) return null;
-    const gltf = await loader.loadAsync(url);
-    return gltf.scene;
+    return await loader.loadAsync(url);
   } catch (e) {
     console.warn("model load failed", url, e);
     return null;
   }
+}
+
+async function loadGltf(name: string): Promise<THREE.Group | null> {
+  return (await loadFull(name))?.scene ?? null;
+}
+
+/** A rigged character (KayKit, CC0) with its animation clips. */
+export interface Character {
+  scene: THREE.Group;
+  clips: THREE.AnimationClip[];
+}
+
+/** Characters load in the background so the menu is not delayed by them. */
+export async function loadCharacters(): Promise<{ lady: Character | null; partner: Character | null }> {
+  const [lady, partner] = await Promise.all([loadFull("lady"), loadFull("partner")]);
+  const wrap = (g: GLTF | null): Character | null => {
+    if (!g) return null;
+    shadowed(g.scene);
+    g.scene.traverse((o) => {
+      // Skinned meshes move outside their bind-pose bounds while animating.
+      if ((o as THREE.SkinnedMesh).isSkinnedMesh) o.frustumCulled = false;
+    });
+    return { scene: g.scene, clips: g.animations };
+  };
+  return { lady: wrap(lady), partner: wrap(partner) };
 }
 
 /** Scales and moves an object so it is `height` tall with its base at y = 0. */
@@ -92,11 +118,14 @@ function shadowed(obj: THREE.Object3D) {
 }
 
 export async function loadAssets(): Promise<Assets> {
-  const [pawnScene, trophyScene, cupScene] = await Promise.all([
+  const [pawnScene, trophyScene, cupScene, chairScene] = await Promise.all([
     loadGltf("pawn"),
     loadGltf("trophy"),
     loadGltf("dicecup"),
+    loadGltf("chair"),
   ]);
+  const chairWood = new THREE.MeshStandardMaterial({ color: "#6b3f1d", roughness: 0.45 });
+  const velvet = new THREE.MeshStandardMaterial({ color: "#8e1b2e", roughness: 0.8 });
 
   const clayPawn = pawnScene ? singleGeometry(pawnScene, 1) : null;
   const fallbackPawn = mergeVertices(pawnGeometry(), 1e-4);
@@ -112,5 +141,6 @@ export async function loadAssets(): Promise<Assets> {
       shadowed(trophyScene ? normalize(trophyScene.clone(true), 1.6) : trophyGroup(gold)),
     dicecup: () =>
       shadowed(cupScene ? normalize(cupScene.clone(true), 1.0) : new THREE.Mesh(diceCupGeometry(), leather)),
+    chair: () => shadowed(chairScene ? normalize(chairScene.clone(true), 1.0) : chairGroup(chairWood, velvet)),
   };
 }

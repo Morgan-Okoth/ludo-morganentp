@@ -1,7 +1,10 @@
 {
   "models": [
+    "chair",
+    "dicecup",
+    "lady",
+    "partner",
     "pawn",
-    "trophy",
-    "dicecup"
+    "trophy"
   ]
 }

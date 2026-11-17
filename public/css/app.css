@@ -14,7 +14,7 @@ body{background:radial-gradient(ellipse at center,#1a0800 0%,#060200 100%);
 /* 3D canvas */
 #stage{position:fixed;inset:0;z-index:1}
 #stage canvas{width:100%;height:100%;display:block;touch-action:none}
-body:not(.playing) #stage{filter:saturate(.9) brightness(.8)}
+body:not(.playing):not(.cine) #stage{filter:saturate(.9) brightness(.8);transition:filter 1s}
 
 #loading{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;gap:16px;
   align-items:center;justify-content:center;color:var(--gold);letter-spacing:4px;font-size:12px;
@@ -31,6 +31,8 @@ body.ready #loading{opacity:0;pointer-events:none}
   border:6px solid var(--edge);border-radius:16px;
   box-shadow:0 12px 50px rgba(0,0,0,.8),inset 0 2px 12px rgba(255,200,100,.18);
   max-width:420px;width:92%;max-height:94vh;overflow:auto}
+.panel{animation:panelIn .6s cubic-bezier(.2,.9,.3,1)}
+@keyframes panelIn{from{opacity:0;transform:translate(-50%,-46%)}}
 .panel h1{font-family:'Cinzel Decorative',serif;font-size:34px;color:var(--gold);
   letter-spacing:10px;text-shadow:0 0 20px var(--gold2);animation:tglow 3s ease-in-out infinite}
 .panel h2{font-family:'Cinzel Decorative',serif;font-size:22px;color:var(--gold);
@@ -143,3 +145,21 @@ body.ready #loading{opacity:0;pointer-events:none}
   .pill{padding:4px 9px;font-size:10px}
   .panel{padding:22px 16px}
 }
+
+/* Opening scene */
+#cine{position:fixed;inset:0;z-index:20;pointer-events:none;opacity:0;transition:opacity .8s}
+body.cine #cine,body.cine-title #cine{opacity:1}
+#cine .bar{position:absolute;left:0;right:0;height:11vh;background:#000;transition:transform 1.2s cubic-bezier(.6,0,.2,1)}
+#cine .bar.top{top:0;transform:translateY(-100%)}
+#cine .bar.bottom{bottom:0;transform:translateY(100%)}
+body.cine #cine .bar{transform:none}
+#cine .cine-title{position:absolute;left:0;right:0;top:15vh;text-align:center;opacity:0;transform:translateY(12px);
+  transition:opacity 1.4s, transform 1.4s}
+body.cine-title #cine .cine-title{opacity:1;transform:none}
+
+#cine .t1{font-family:'Cinzel Decorative',serif;font-size:clamp(40px,9vw,84px);color:var(--gold);letter-spacing:.3em;
+  text-shadow:0 0 30px var(--gold2),0 4px 12px #000}
+#cine .t2{color:#FFD7A0;font-size:clamp(11px,2.2vw,15px);letter-spacing:.35em;margin-top:6px;text-shadow:0 2px 6px #000}
+#skipIntro{position:absolute;right:18px;bottom:calc(11vh + 14px);pointer-events:auto;opacity:.85}
+body:not(.cine) #skipIntro{display:none}
+body.cine .credit{opacity:0}

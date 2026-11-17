@@ -4,7 +4,7 @@
  * browser as reference.html?asset=<name>; sets window.__ready when drawn.
  */
 import * as THREE from "three";
-import { diceCupGeometry, pawnGeometry, trophyGroup } from "../../src/client/procedural";
+import { chairGroup, diceCupGeometry, pawnGeometry, trophyGroup } from "../../src/client/procedural";
 
 const asset = new URLSearchParams(location.search).get("asset") ?? "pawn";
 const size = 1024;
@@ -39,6 +39,10 @@ if (asset === "pawn") {
   // Lighter leather than in game: the dark version timed out on Clay twice.
   const m = new THREE.MeshStandardMaterial({ color: "#b0703a", roughness: 0.6 });
   obj.add(new THREE.Mesh(diceCupGeometry(), m));
+} else if (asset === "chair") {
+  const wood = new THREE.MeshStandardMaterial({ color: "#7a4a22", roughness: 0.45 });
+  const velvet = new THREE.MeshStandardMaterial({ color: "#8e1b2e", roughness: 0.8 });
+  obj.add(chairGroup(wood, velvet));
 }
 scene.add(obj);
 

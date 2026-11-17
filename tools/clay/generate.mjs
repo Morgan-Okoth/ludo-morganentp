@@ -26,7 +26,7 @@ import { build } from "esbuild";
 import { MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
 import { chromium } from "playwright-core";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -45,6 +45,7 @@ const ASSETS = {
   pawn: { triangles: 8000, texture: false },
   trophy: { triangles: 16000, texture: true },
   dicecup: { triangles: 6000, texture: true },
+  chair: { triangles: 12000, texture: true },
 };
 
 async function generate(name, pngPath) {
@@ -129,7 +130,7 @@ async function optimise(name, raw) {
 
 /** public/models/manifest.json lists available models so the game never requests missing ones. */
 async function updateManifest() {
-  const models = Object.keys(ASSETS).filter((n) => existsSync(join(OUT, `${n}.glb`)));
+  const models = (await readdir(OUT)).filter((f) => f.endsWith(".glb")).map((f) => f.slice(0, -4)).sort();
   await writeFile(join(OUT, "manifest.json"), JSON.stringify({ models }, null, 2) + "\n");
 }
 

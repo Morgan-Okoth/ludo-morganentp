@@ -3,6 +3,7 @@
   "name": "ludo-arena",
   "main": "src/index.ts",
   "compatibility_date": "2025-11-01",
+  "build": { "command": "npm run build" },
   "account_id": "cd03996c53fed178b42f4b1417334a49",
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   "durable_objects": {

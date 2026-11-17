@@ -1,13 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./index";
 import {
-  COLORS,
+  MAX_PLAYERS,
+  MIN_PLAYERS,
   type Color,
   type GameEvent,
   type GameState,
   applyMove,
   applyRoll,
   chooseAiMove,
+  colorsFor,
   createGame,
   currentColor,
   legalMoves,
@@ -15,10 +17,11 @@ import {
 } from "./shared/rules";
 
 interface Seat {
-  color: Color;
+  /** Public, non-secret seat id (used to remove AI seats). */
+  id: string;
   name: string;
   ai: boolean;
-  /** Stable id supplied by the client so a refresh reclaims the same seat. */
+  /** Stable id supplied by the client so a refresh reclaims the same seat. Secret. */
   clientId: string | null;
 }
 
@@ -26,33 +29,41 @@ interface RoomData {
   seats: Seat[];
   hostId: string | null;
   game: GameState | null;
+  /** Colour of each seat id once the game has started. */
+  colors: Record<string, Color>;
 }
 
 type ClientMessage =
   | { type: "join"; clientId: string; name?: string }
   | { type: "addAi" }
-  | { type: "removeAi"; color: Color }
+  | { type: "removeSeat"; seat: string }
+  | { type: "leave" }
   | { type: "start" }
+  | { type: "rematch" }
   | { type: "roll" }
   | { type: "move"; token: number }
   | { type: "ping" };
 
 /** Long enough for clients to finish the dice and token animations. */
-const AI_DELAY_MS = 2400;
+const AI_DELAY_MS = 2200;
 const MAX_NAME = 20;
+const AI_NAMES = ["Ada", "Baraka", "Chiku", "Duma", "Eshe", "Faraji"];
 
 /**
  * One GameRoom per room code. Owns the authoritative game state: dice are
  * rolled here and every move is validated by the shared rules module.
  */
 export class GameRoom extends DurableObject<Env> {
-  private data: RoomData = { seats: [], hostId: null, game: null };
+  private data: RoomData = { seats: [], hostId: null, game: null, colors: {} };
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<RoomData>("room");
-      if (saved) this.data = saved;
+      // Rooms saved by older versions (no seat ids / no board arms) are discarded.
+      if (saved && saved.seats.every((s) => s.id) && (!saved.game || saved.game.arms)) {
+        this.data = { ...saved, colors: saved.colors ?? {} };
+      }
     });
   }
 
@@ -87,21 +98,39 @@ export class GameRoom extends DurableObject<Env> {
     let events: GameEvent[] = [];
     try {
       switch (msg.type) {
-        case "addAi":
+        case "addAi": {
           this.requireHost(clientId);
           this.requireLobby();
-          this.addSeat({ name: "", ai: true, clientId: null });
+          if (this.data.seats.length >= MAX_PLAYERS) throw new Error("Room is full");
+          const used = new Set(this.data.seats.map((s) => s.name));
+          const name = AI_NAMES.find((n) => !used.has(`${n} (AI)`)) ?? "Bot";
+          this.data.seats.push({ id: crypto.randomUUID().slice(0, 8), name: `${name} (AI)`, ai: true, clientId: null });
           break;
-        case "removeAi":
+        }
+        case "removeSeat":
           this.requireHost(clientId);
           this.requireLobby();
-          this.data.seats = this.data.seats.filter((s) => !(s.ai && s.color === msg.color));
+          this.data.seats = this.data.seats.filter((s) => !(s.id === msg.seat && s.clientId !== clientId));
+          break;
+        case "leave":
+          if (this.data.game && this.data.game.phase !== "over") throw new Error("Game in progress");
+          this.data.seats = this.data.seats.filter((s) => s.clientId !== clientId);
+          if (this.data.hostId === clientId) {
+            this.data.hostId = this.data.seats.find((s) => !s.ai)?.clientId ?? null;
+          }
           break;
         case "start":
           this.requireHost(clientId);
           this.requireLobby();
-          if (this.data.seats.length < 2) throw new Error("Need at least 2 players");
-          this.data.game = createGame(this.sortedSeats().map((s) => s.color));
+          if (this.data.seats.length < MIN_PLAYERS) throw new Error("Need at least 2 players");
+          this.data.colors = this.lobbyColors();
+          this.data.game = createGame(Object.values(this.data.colors));
+          break;
+        case "rematch":
+          this.requireHost(clientId);
+          if (!this.data.game || this.data.game.phase !== "over") throw new Error("Game still running");
+          this.data.game = null;
+          this.data.colors = {};
           break;
         case "roll":
           events = this.humanAction(clientId, (game) => {
@@ -159,9 +188,15 @@ export class GameRoom extends DurableObject<Env> {
     ws.serializeAttachment({ clientId });
     let seat = this.data.seats.find((s) => s.clientId === clientId);
     if (!seat) {
-      if (this.data.game) return this.error(ws, "Game already started");
-      if (this.data.seats.length >= COLORS.length) return this.error(ws, "Room is full");
-      seat = this.addSeat({ name, ai: false, clientId });
+      if (this.data.game) {
+        // Late joiners watch as spectators.
+        ws.send(JSON.stringify(this.lobbyPayload(clientId)));
+        ws.send(JSON.stringify(this.statePayload([], clientId)));
+        return;
+      }
+      if (this.data.seats.length >= MAX_PLAYERS) return this.error(ws, "Room is full");
+      seat = { id: crypto.randomUUID().slice(0, 8), name, ai: false, clientId };
+      this.data.seats.push(seat);
     } else if (!this.data.game) {
       seat.name = name;
     }
@@ -195,22 +230,24 @@ export class GameRoom extends DurableObject<Env> {
     return result.events;
   }
 
-  private addSeat(init: Omit<Seat, "color">): Seat {
-    const taken = new Set(this.data.seats.map((s) => s.color));
-    const color = COLORS.find((c) => !taken.has(c));
-    if (!color) throw new Error("Room is full");
-    const seat: Seat = { ...init, color };
-    if (seat.ai) seat.name = `AI ${color}`;
-    this.data.seats.push(seat);
-    return seat;
+  /** Colours seats would get if the game started now (join order). */
+  private lobbyColors(): Record<string, Color> {
+    const n = this.data.seats.length;
+    const palette: Color[] = n >= MIN_PLAYERS ? colorsFor(n) : ["red"];
+    const out: Record<string, Color> = {};
+    this.data.seats.forEach((s, i) => {
+      if (palette[i]) out[s.id] = palette[i]!;
+    });
+    return out;
   }
 
-  private sortedSeats(): Seat[] {
-    return [...this.data.seats].sort((a, b) => COLORS.indexOf(a.color) - COLORS.indexOf(b.color));
+  private colorOf(seat: Seat): Color | null {
+    const colors = this.data.game ? this.data.colors : this.lobbyColors();
+    return colors[seat.id] ?? null;
   }
 
   private seatFor(color: Color): Seat | undefined {
-    return this.data.seats.find((s) => s.color === color);
+    return this.data.seats.find((s) => this.data.colors[s.id] === color);
   }
 
   private clientIdOf(ws: WebSocket): string | null {
@@ -265,10 +302,11 @@ export class GameRoom extends DurableObject<Env> {
     return {
       type: "lobby" as const,
       started: this.data.game !== null,
-      you: mine?.color ?? null,
-      host: host?.color ?? null,
-      seats: this.sortedSeats().map((s) => ({
-        color: s.color,
+      you: mine ? mine.id : null,
+      host: host ? host.id : null,
+      seats: this.data.seats.map((s) => ({
+        id: s.id,
+        color: this.colorOf(s),
         name: s.name,
         ai: s.ai,
         connected: s.ai || (s.clientId !== null && connected.has(s.clientId)),
@@ -281,7 +319,13 @@ export class GameRoom extends DurableObject<Env> {
     const game = this.data.game;
     const legal =
       game && game.phase === "move" && game.die !== null ? legalMoves(game, game.die) : [];
-    return { type: "state" as const, state: game, events, legal, you: seat?.color ?? null };
+    return {
+      type: "state" as const,
+      state: game,
+      events,
+      legal,
+      you: seat ? (this.data.colors[seat.id] ?? null) : null,
+    };
   }
 
   private broadcastLobby(): void {

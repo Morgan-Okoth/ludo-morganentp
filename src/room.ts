@@ -10,6 +10,7 @@ import {
   chooseAiMove,
   createGame,
   currentColor,
+  legalMoves,
   rollDie,
 } from "./shared/rules";
 
@@ -36,7 +37,8 @@ type ClientMessage =
   | { type: "move"; token: number }
   | { type: "ping" };
 
-const AI_DELAY_MS = 900;
+/** Long enough for clients to finish the dice and token animations. */
+const AI_DELAY_MS = 2400;
 const MAX_NAME = 20;
 
 /**
@@ -276,7 +278,10 @@ export class GameRoom extends DurableObject<Env> {
 
   private statePayload(events: GameEvent[], clientId: string) {
     const seat = this.data.seats.find((s) => s.clientId === clientId);
-    return { type: "state" as const, state: this.data.game, events, you: seat?.color ?? null };
+    const game = this.data.game;
+    const legal =
+      game && game.phase === "move" && game.die !== null ? legalMoves(game, game.die) : [];
+    return { type: "state" as const, state: game, events, legal, you: seat?.color ?? null };
   }
 
   private broadcastLobby(): void {

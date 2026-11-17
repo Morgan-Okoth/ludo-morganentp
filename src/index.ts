@@ -6,6 +6,7 @@ export interface Env {
   ROOM: DurableObjectNamespace;
   DB: D1Database;
   SESSIONS: KVNamespace;
+  REPLAYS: R2Bucket;
   ASSETS: Fetcher;
 }
 

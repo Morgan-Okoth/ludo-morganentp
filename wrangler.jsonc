@@ -17,6 +17,9 @@
       "migrations_dir": "migrations"
     }
   ],
+  "r2_buckets": [
+    { "binding": "REPLAYS", "bucket_name": "ludo-arena-replays" }
+  ],
   "kv_namespaces": [
     { "binding": "SESSIONS", "id": "52c2ccc1988e4075800004f38159dade" }
   ]

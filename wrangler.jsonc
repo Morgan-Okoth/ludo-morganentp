@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ludo-arena",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+  "account_id": "cd03996c53fed178b42f4b1417334a49",
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOM", "class_name": "GameRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ludo-arena-db",
+      "database_id": "8a1ef007-4d46-4bfc-a9cf-4b8f21b201cd",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "REPLAYS", "bucket_name": "ludo-arena-replays" }
+  ],
+  "kv_namespaces": [
+    { "binding": "SESSIONS", "id": "52c2ccc1988e4075800004f38159dade" }
+  ]
+}

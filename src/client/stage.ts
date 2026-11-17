@@ -10,7 +10,29 @@ import { Fx } from "./fx";
 import { Layout } from "./layout";
 import { feltTexture, woodTexture } from "./textures";
 
+/** World height of the floor; the table top is at y = 0. */
+export const FLOOR_Y = -11;
+const LAMP_Y = 34;
+
+/** White centre fading to transparent edges, used as an alpha map. */
+function radialAlpha(size = 256): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d")!;
+  const grad = g.createRadialGradient(size / 2, size / 2, size * 0.12, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, "#fff");
+  grad.addColorStop(0.55, "#666");
+  grad.addColorStop(1, "#000");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(c);
+}
+
 export class Stage {
+  /** When true, the intro drives the camera and orbit controls are paused. */
+  cinematic = false;
+  /** Hanging lamp meshes; hidden while playing so they never cover the board. */
+  readonly lamp = new THREE.Group();
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
@@ -82,6 +104,7 @@ export class Stage {
     );
     top.position.y = -0.6;
     top.receiveShadow = true;
+    top.castShadow = true;
     this.scene.add(top);
 
     // Felt playing mat under the board.
@@ -103,23 +126,72 @@ export class Stage {
     this.scene.add(inlay);
 
     const legMat = new THREE.MeshStandardMaterial({ map: wood, roughness: 0.5 });
-    const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(3, 6, 22, 48), legMat);
-    pedestal.position.y = -12.2;
+    const legH = FLOOR_Y + 1.2;
+    const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(3, 4, -legH, 48), legMat);
+    pedestal.position.y = -1.2 + legH / 2;
+    pedestal.castShadow = true;
     this.scene.add(pedestal);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(7, 9, 1.4, 48), legMat);
+    foot.position.y = FLOOR_Y + 0.7;
+    foot.castShadow = foot.receiveShadow = true;
+    this.scene.add(foot);
+
+    // Floor that fades into the starry background, plus a rug under the table.
+    const fade = radialAlpha();
+    const floorWood = woodTexture("#3b1d08", "#120600", 41);
+    floorWood.repeat.set(14, 14);
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(260, 96),
+      new THREE.MeshStandardMaterial({ map: floorWood, alphaMap: fade, transparent: true, roughness: 0.6, depthWrite: false }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = FLOOR_Y;
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+    const rug = new THREE.Mesh(
+      new THREE.CircleGeometry(62, 96),
+      new THREE.MeshStandardMaterial({ map: feltTexture("#5a0f1c"), roughness: 0.95 }),
+    );
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.y = FLOOR_Y + 0.06;
+    rug.receiveShadow = true;
+    this.scene.add(rug);
+    const rugRing = new THREE.Mesh(
+      new THREE.RingGeometry(57, 59, 128),
+      new THREE.MeshStandardMaterial({ color: "#c9a227", metalness: 0.8, roughness: 0.4 }),
+    );
+    rugRing.rotation.x = -Math.PI / 2;
+    rugRing.position.y = FLOOR_Y + 0.08;
+    this.scene.add(rugRing);
+
+    // Pendant lamp over the table (the light itself is the spotlight above it).
+    const shade = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 7, 5, 48, 1, true),
+      new THREE.MeshStandardMaterial({ color: "#2b1606", metalness: 0.6, roughness: 0.35, side: THREE.DoubleSide }),
+    );
+    shade.position.y = LAMP_Y;
+    this.lamp.add(shade);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(1.6, 24, 16), new THREE.MeshBasicMaterial({ color: "#ffe2a8" }));
+    bulb.position.y = LAMP_Y - 1.6;
+    this.lamp.add(bulb);
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 120, 6), new THREE.MeshBasicMaterial({ color: "#111" }));
+    cord.position.y = LAMP_Y + 62;
+    this.lamp.add(cord);
+    this.scene.add(this.lamp);
   }
 
   private buildLights() {
     this.scene.add(new THREE.HemisphereLight("#ffe3b8", "#1a0800", 0.55));
-    // Warm lamp above the table.
-    const lamp = new THREE.SpotLight("#ffd9a0", 1600, 90, Math.PI / 5, 0.55, 1.6);
-    lamp.position.set(4, 34, 8);
-    lamp.target.position.set(0, 0, 0);
+    // Warm lamp light, wide enough to reach the chairs around the table.
+    const lamp = new THREE.SpotLight("#ffd9a0", 1700, 160, Math.PI / 3.6, 0.6, 1.6);
+    lamp.position.set(0, LAMP_Y - 2.5, 0);
+    lamp.target.position.set(0, FLOOR_Y, 0);
     lamp.castShadow = true;
     lamp.shadow.mapSize.set(2048, 2048);
     lamp.shadow.bias = -0.0004;
     lamp.shadow.normalBias = 0.02;
-    lamp.shadow.camera.near = 10;
-    lamp.shadow.camera.far = 70;
+    lamp.shadow.camera.near = 8;
+    lamp.shadow.camera.far = 90;
     this.scene.add(lamp, lamp.target);
     const fill = new THREE.DirectionalLight("#9ec7ff", 0.35);
     fill.position.set(-20, 12, -14);
@@ -178,10 +250,36 @@ export class Stage {
   }
 
   viewArm = 0;
+  /** Which framing resize() should restore. */
+  private mode: "menu" | "game" = "menu";
 
-  async lookFrom(arm: number, animate = true) {
+  /**
+   * Wide shot for the menus: the table with both players beside it.
+   * Portrait screens back off further so the table still fits.
+   */
+  private menuPos() {
+    const aspect = this.camera.aspect;
+    const dist = Math.min(130, 92 * Math.pow(Math.max(1, 1.5 / aspect), 0.5));
+    const elev = aspect < 1 ? 0.62 : 0.42;
+    return new THREE.Vector3(0, Math.sin(elev) * dist, Math.cos(elev) * dist);
+  }
+
+  get inMenuView() {
+    return this.mode === "menu";
+  }
+
+  menuView(animate = true, durationMs = 900) {
+    this.mode = "menu";
+    return this.moveTo(this.menuPos(), animate, durationMs);
+  }
+
+  lookFrom(arm: number, animate = true, durationMs = 900) {
+    this.mode = "game";
     this.viewArm = arm;
-    const to = this.viewFor(arm);
+    return this.moveTo(this.viewFor(arm), animate, durationMs);
+  }
+
+  private async moveTo(to: THREE.Vector3, animate: boolean, durationMs: number) {
     if (!animate) {
       this.camera.position.copy(to);
       this.controls.update();
@@ -195,7 +293,7 @@ export class Stage {
     if (dTheta > Math.PI) dTheta -= Math.PI * 2;
     if (dTheta < -Math.PI) dTheta += Math.PI * 2;
     const sph = new THREE.Spherical();
-    await tween(900, (k) => {
+    await tween(durationMs, (k) => {
       const e = ease.inOutCubic(k);
       sph.set(
         THREE.MathUtils.lerp(fromSph.radius, toSph.radius, e),
@@ -219,9 +317,12 @@ export class Stage {
     this.camera.setViewOffset(w, h, 0, h * 0.045, w, h);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
-    if (this.controls) void this.lookFrom(this.viewArm, false);
+    if (this.controls && !this.cinematic) {
+      if (this.mode === "menu") void this.menuView(false);
+      else void this.lookFrom(this.viewArm, false);
+    }
     this.controls.minDistance = 12;
-    this.controls.maxDistance = 110;
+    this.controls.maxDistance = 140;
   }
 
   private bindInput() {
@@ -247,7 +348,9 @@ export class Stage {
     const dt = Math.min(0.05, (time - this.last) / 1000);
     this.last = time;
     tickTweens(time);
-    if (this.spin) {
+    if (this.cinematic) {
+      // Camera is positioned by the intro.
+    } else if (this.spin) {
       const sph = new THREE.Spherical().setFromVector3(this.camera.position);
       sph.theta += this.spin * dt;
       this.camera.position.setFromSpherical(sph);

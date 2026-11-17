@@ -82,6 +82,7 @@ export class GameRoom extends DurableObject<Env> {
     const clientId = this.clientIdOf(ws);
     if (!clientId) return this.error(ws, "Join the room first");
 
+    let events: GameEvent[] = [];
     try {
       switch (msg.type) {
         case "addAi":
@@ -101,26 +102,24 @@ export class GameRoom extends DurableObject<Env> {
           this.data.game = createGame(this.sortedSeats().map((s) => s.color));
           break;
         case "roll":
-          this.humanAction(clientId, () => {
-            const game = this.data.game!;
+          events = this.humanAction(clientId, (game) => {
             if (game.phase !== "roll") throw new Error("Not your roll");
             return applyRoll(game, rollDie());
           });
-          return this.afterChange();
+          break;
         case "move":
-          this.humanAction(clientId, () => {
-            const game = this.data.game!;
+          events = this.humanAction(clientId, (game) => {
             if (game.phase !== "move") throw new Error("Roll first");
             return applyMove(game, Number(msg.token));
           });
-          return this.afterChange();
+          break;
         default:
           return;
       }
     } catch (e) {
       return this.error(ws, e instanceof Error ? e.message : "Error");
     }
-    await this.afterChange();
+    await this.afterChange(events);
   }
 
   async webSocketClose(ws: WebSocket, code: number): Promise<void> {
@@ -130,6 +129,7 @@ export class GameRoom extends DurableObject<Env> {
       /* already closed */
     }
     this.broadcastLobby();
+    await this.scheduleAi();
   }
 
   async alarm(): Promise<void> {
@@ -171,26 +171,27 @@ export class GameRoom extends DurableObject<Env> {
     await this.scheduleAi();
   }
 
-  private async afterChange(): Promise<void> {
+  private async afterChange(events: GameEvent[] = []): Promise<void> {
     await this.save();
     this.broadcastLobby();
-    if (this.data.game) this.broadcastState([]);
+    if (this.data.game) this.broadcastState(events);
     await this.scheduleAi();
   }
 
   // ---- helpers ----------------------------------------------------------
 
-  private humanAction(clientId: string, run: () => { state: GameState; events: GameEvent[] }) {
+  private humanAction(
+    clientId: string,
+    run: (game: GameState) => { state: GameState; events: GameEvent[] },
+  ): GameEvent[] {
     const game = this.data.game;
     if (!game || game.phase === "over") throw new Error("No game in progress");
     const seat = this.seatFor(currentColor(game));
     if (!seat || seat.clientId !== clientId) throw new Error("Not your turn");
-    const result = run();
+    const result = run(game);
     this.data.game = result.state;
-    this.pendingEvents = result.events;
+    return result.events;
   }
-
-  private pendingEvents: GameEvent[] = [];
 
   private addSeat(init: Omit<Seat, "color">): Seat {
     const taken = new Set(this.data.seats.map((s) => s.color));
@@ -254,18 +255,21 @@ export class GameRoom extends DurableObject<Env> {
     ws.send(JSON.stringify({ type: "error", message }));
   }
 
-  private lobbyPayload() {
+  /** Client ids are credentials, so they are never sent to other players. */
+  private lobbyPayload(clientId: string | null) {
     const connected = this.connectedIds();
+    const mine = this.data.seats.find((s) => s.clientId !== null && s.clientId === clientId);
+    const host = this.data.seats.find((s) => s.clientId === this.data.hostId);
     return {
       type: "lobby" as const,
-      hostId: this.data.hostId,
       started: this.data.game !== null,
+      you: mine?.color ?? null,
+      host: host?.color ?? null,
       seats: this.sortedSeats().map((s) => ({
         color: s.color,
         name: s.name,
         ai: s.ai,
         connected: s.ai || (s.clientId !== null && connected.has(s.clientId)),
-        clientId: s.clientId,
       })),
     };
   }
@@ -276,16 +280,15 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private broadcastLobby(): void {
-    const payload = JSON.stringify(this.lobbyPayload());
-    for (const ws of this.ctx.getWebSockets()) ws.send(payload);
+    for (const ws of this.ctx.getWebSockets()) {
+      ws.send(JSON.stringify(this.lobbyPayload(this.clientIdOf(ws))));
+    }
   }
 
   private broadcastState(events: GameEvent[]): void {
-    const evs = events.length ? events : this.pendingEvents;
-    this.pendingEvents = [];
     for (const ws of this.ctx.getWebSockets()) {
       const id = this.clientIdOf(ws);
-      if (id) ws.send(JSON.stringify(this.statePayload(evs, id)));
+      if (id) ws.send(JSON.stringify(this.statePayload(events, id)));
     }
   }
 }

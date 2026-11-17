@@ -592,6 +592,7 @@ function onDiceClick(e){
 }
 
 function triggerRoll(fromX,fromY){
+  if(window.ONLINE&&ONLINE.gameActive){onlineRollClick();return;}
   if(BUSY||OVER||PHASE!=='roll')return;
   BUSY=true;
   document.getElementById('rollBtn').disabled=true;
@@ -870,5 +871,6 @@ flyDice.style.left='-200px'; flyDice.style.top='-200px';
 showDiceFace(1,'red');
 </script>
 <script src="/online.js"></script>
+<script src="/online-game.js"></script>
 </body>
 </html>

@@ -8,27 +8,19 @@ import { buildBoard, type BoardMeshes } from "./board3d";
 import { Die } from "./dice";
 import { Fx } from "./fx";
 import { Layout } from "./layout";
+import { type Room, buildRoom } from "./room";
 import { feltTexture, woodTexture } from "./textures";
 
 /** World height of the floor; the table top is at y = 0. */
 export const FLOOR_Y = -11;
 const LAMP_Y = 34;
 
-/** White centre fading to transparent edges, used as an alpha map. */
-function radialAlpha(size = 256): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const g = c.getContext("2d")!;
-  const grad = g.createRadialGradient(size / 2, size / 2, size * 0.12, size / 2, size / 2, size / 2);
-  grad.addColorStop(0, "#fff");
-  grad.addColorStop(0.55, "#666");
-  grad.addColorStop(1, "#000");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(c);
-}
+/** The camera never leaves the room: horizontal radius and height limits. */
+const CAM_MAX_R = 86;
+const CAM_MAX_Y = 105;
 
 export class Stage {
+  room!: Room;
   /** When true, the intro drives the camera and orbit controls are paused. */
   cinematic = false;
   /** Hanging lamp meshes; hidden while playing so they never cover the board. */
@@ -136,33 +128,8 @@ export class Stage {
     foot.castShadow = foot.receiveShadow = true;
     this.scene.add(foot);
 
-    // Floor that fades into the starry background, plus a rug under the table.
-    const fade = radialAlpha();
-    const floorWood = woodTexture("#3b1d08", "#120600", 41);
-    floorWood.repeat.set(14, 14);
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(260, 96),
-      new THREE.MeshStandardMaterial({ map: floorWood, alphaMap: fade, transparent: true, roughness: 0.6, depthWrite: false }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = FLOOR_Y;
-    floor.receiveShadow = true;
-    this.scene.add(floor);
-    const rug = new THREE.Mesh(
-      new THREE.CircleGeometry(62, 96),
-      new THREE.MeshStandardMaterial({ map: feltTexture("#5a0f1c"), roughness: 0.95 }),
-    );
-    rug.rotation.x = -Math.PI / 2;
-    rug.position.y = FLOOR_Y + 0.06;
-    rug.receiveShadow = true;
-    this.scene.add(rug);
-    const rugRing = new THREE.Mesh(
-      new THREE.RingGeometry(57, 59, 128),
-      new THREE.MeshStandardMaterial({ color: "#c9a227", metalness: 0.8, roughness: 0.4 }),
-    );
-    rugRing.rotation.x = -Math.PI / 2;
-    rugRing.position.y = FLOOR_Y + 0.08;
-    this.scene.add(rugRing);
+    // The room (floor, rug, walls) is built by room.ts.
+    this.room = buildRoom(this.scene, FLOOR_Y);
 
     // Pendant lamp over the table (the light itself is the spotlight above it).
     const shade = new THREE.Mesh(
@@ -236,16 +203,20 @@ export class Stage {
     this.decor.add(cup);
   }
 
-  /** Camera framing so the whole board fits on screen, viewed from `arm`'s side. */
+  /**
+   * Seat view: as if sitting at `arm`'s place at the table, looking across
+   * at everyone else. Low and fixed; it does not follow the turn.
+   * Wide screens keep the neighbouring players in frame; portrait screens
+   * keep the board's width and look down more steeply.
+   */
   private viewFor(arm: number) {
-    const l = this.layout;
-    const t = l.theta(arm);
+    const t = this.layout.theta(arm);
     const aspect = this.camera.aspect;
-    // Board radius in world units is about 15.5 (see setLayout).
-    const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const dist = (15.5 * (aspect < 1 ? 1.02 : 1.08)) / (tanHalf * Math.min(1, aspect));
-    // Portrait screens look more top-down so the board uses the width.
-    const elev = aspect < 1 ? 1.22 : 0.98; // radians above the table
+    const tanH = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * aspect;
+    const portrait = aspect < 1;
+    const elev = portrait ? 1.0 : 0.36; // radians above the table
+    const halfWidth = portrait ? 17 : 40; // board only, or board plus the seats beside you
+    const dist = THREE.MathUtils.clamp(halfWidth / tanH, 34, 120);
     return new THREE.Vector3(Math.cos(t) * Math.cos(elev) * dist, Math.sin(elev) * dist, Math.sin(t) * Math.cos(elev) * dist);
   }
 
@@ -259,8 +230,9 @@ export class Stage {
    */
   private menuPos() {
     const aspect = this.camera.aspect;
-    const dist = Math.min(130, 92 * Math.pow(Math.max(1, 1.5 / aspect), 0.5));
-    const elev = aspect < 1 ? 0.62 : 0.42;
+    const portrait = aspect < 1;
+    const elev = portrait ? 0.8 : 0.42;
+    const dist = portrait ? 100 : 90;
     return new THREE.Vector3(0, Math.sin(elev) * dist, Math.cos(elev) * dist);
   }
 
@@ -270,12 +242,15 @@ export class Stage {
 
   menuView(animate = true, durationMs = 900) {
     this.mode = "menu";
+    this.lamp.visible = true;
     return this.moveTo(this.menuPos(), animate, durationMs);
   }
 
   lookFrom(arm: number, animate = true, durationMs = 900) {
     this.mode = "game";
     this.viewArm = arm;
+    // The steep portrait seat view looks straight through the shade; the spotlight stays on.
+    this.lamp.visible = false;
     return this.moveTo(this.viewFor(arm), animate, durationMs);
   }
 
@@ -313,6 +288,8 @@ export class Stage {
     const w = this.host.clientWidth || window.innerWidth;
     const h = this.host.clientHeight || window.innerHeight;
     this.camera.aspect = w / h;
+    // A wider lens on portrait screens keeps the camera inside the room.
+    this.camera.fov = w < h ? 55 : 42;
     // Nudge the picture up so the bottom HUD does not cover the near board edge.
     this.camera.setViewOffset(w, h, 0, h * 0.045, w, h);
     this.camera.updateProjectionMatrix();
@@ -322,7 +299,7 @@ export class Stage {
       else void this.lookFrom(this.viewArm, false);
     }
     this.controls.minDistance = 12;
-    this.controls.maxDistance = 140;
+    this.controls.maxDistance = 125;
   }
 
   private bindInput() {
@@ -357,6 +334,15 @@ export class Stage {
       this.camera.lookAt(this.controls.target);
     } else {
       this.controls.update();
+      // Orbiting must not take the camera through the walls.
+      const p = this.camera.position;
+      const r = Math.hypot(p.x, p.z);
+      if (r > CAM_MAX_R) {
+        p.x *= CAM_MAX_R / r;
+        p.z *= CAM_MAX_R / r;
+      }
+      if (p.y > CAM_MAX_Y) p.y = CAM_MAX_Y;
+      this.camera.lookAt(this.controls.target);
     }
     this.fx.update(dt);
     this.die.update(dt);

@@ -130,7 +130,10 @@ async function optimise(name, raw) {
 
 /** public/models/manifest.json lists available models so the game never requests missing ones. */
 async function updateManifest() {
-  const models = (await readdir(OUT)).filter((f) => f.endsWith(".glb")).map((f) => f.slice(0, -4)).sort();
+  const glbs = async (dir, prefix = "") =>
+    existsSync(dir) ? (await readdir(dir)).filter((f) => f.endsWith(".glb")).map((f) => prefix + f.slice(0, -4)) : [];
+  // Include people/ (written by tools/people/build.mjs) so neither script drops the other's models.
+  const models = [...(await glbs(OUT)), ...(await glbs(join(OUT, "people"), "people/"))].sort();
   await writeFile(join(OUT, "manifest.json"), JSON.stringify({ models }, null, 2) + "\n");
 }
 

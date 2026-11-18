@@ -109,6 +109,7 @@ body.ready #loading{opacity:0;pointer-events:none}
 .hud-corner{position:absolute;top:calc(10px + env(safe-area-inset-top));right:10px;display:flex;flex-direction:column;gap:8px}
 .icon-btn{width:40px;height:40px;border-radius:10px;border:2px solid rgba(255,215,0,.45);
   background:rgba(40,16,0,.75);color:var(--gold);font-size:17px;cursor:pointer}
+.hud-bottom .pills{margin-bottom:2px}
 .hud-bottom{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;gap:8px;
   padding:0 10px calc(26px + env(safe-area-inset-bottom));background:linear-gradient(transparent,#060200dd)}
 .msg{--c:#FFD700;color:#fff;font-size:14px;letter-spacing:2px;min-height:20px;text-align:center;

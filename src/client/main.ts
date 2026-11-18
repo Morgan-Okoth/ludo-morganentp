@@ -1,8 +1,9 @@
 /** Entry point: menus, local setup, online lobby, and screen flow. */
 import { MAX_PLAYERS, type Color, type GameState, armCountFor, colorsFor } from "../shared/rules";
 import { speed } from "./anim";
-import { loadAssets, loadCharacters } from "./assets";
-import { Room } from "./intro";
+import { loadAssets } from "./assets";
+import { INTRO_COLORS, playIntro } from "./intro";
+import { Seating } from "./people";
 import { unlock } from "./audio";
 import { Hud } from "./hud";
 import { COLOR_HEX } from "./layout";
@@ -20,9 +21,6 @@ function show(screen: Screen) {
   $("online").classList.toggle("hidden", screen !== "online");
   hud.show(screen === "game");
   document.body.classList.toggle("playing", screen === "game");
-  // The players and the hanging lamp belong to the room, not the game view.
-  tableRoom.setPeopleVisible(screen !== "game");
-  stage.lamp.visible = screen !== "game";
 }
 
 // ---- stars backdrop (kept from the original design) ----
@@ -42,17 +40,21 @@ if (speedParam > 0) speed.factor = Math.min(50, speedParam);
 
 const hud = new Hud();
 const assets = await loadAssets();
+// Wall writing is drawn into canvases when the room is built: wait for the web fonts.
+await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]);
 const stage = new Stage($("stage"), assets);
 const view = new GameView(stage, hud);
-const tableRoom = new Room(stage, assets, await loadCharacters());
+const seating = new Seating(stage);
+view.seating = seating;
 console.info(`pawn model: ${assets.pawnSource}`);
 
 let local: LocalMatch | null = null;
 let room: RoomClient | null = null;
 let lastLocalSeats: SeatInfo[] = [];
 
-function backdrop(colors: Color[]) {
+function backdrop(colors: Color[], moveCamera = true) {
   view.preview(colors, armCountFor(colors.length));
+  if (!moveCamera) return;
   stage.spin = 0.08;
   if (!stage.inMenuView) void stage.menuView(true, 1400);
 }
@@ -62,7 +64,7 @@ let count = 4;
 const types: ("human" | "ai")[] = ["human", "ai", "ai", "ai", "ai", "ai"];
 const names: string[] = Array(MAX_PLAYERS).fill("");
 
-function renderSetup() {
+function renderSetup(withBackdrop = true) {
   const colors = colorsFor(count);
   const box = $("playerSetup");
   box.textContent = "";
@@ -92,7 +94,7 @@ function renderSetup() {
   document.querySelectorAll<HTMLButtonElement>(".pcb").forEach((b) => b.classList.toggle("sel", Number(b.dataset.n) === count));
   const shape = { 4: "Classic cross", 5: "Pentagon", 6: "Hexagon" }[armCountFor(count)];
   $("shapeHint").textContent = `${shape} board`;
-  backdrop(colors);
+  if (withBackdrop) backdrop(colors);
 }
 
 document.querySelectorAll<HTMLButtonElement>(".pcb").forEach((b) =>
@@ -270,7 +272,6 @@ function enterRoom(code: string) {
   client.onState = (m) => {
     myColor = m.you;
     view.canAct = (c) => c === myColor;
-    view.followTurn = false;
     view.onRoll = () => client.send({ type: "roll" });
     view.onMove = (i) => client.send({ type: "move", token: i });
     if (!inGame) {
@@ -327,20 +328,35 @@ function renderSeats(m: LobbyMsg) {
 }
 
 // ---------------------------------------------------------------- boot
-renderSetup();
+// Opening scene. Skipped for tests (?speed), ?intro=0 and reduced-motion users.
+const introOn =
+  !(speedParam > 0) && params.get("intro") !== "0" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+if (introOn) {
+  // Two people at the table for the opening; the menu's other players join afterwards.
+  renderSetup(false);
+  view.preview([...INTRO_COLORS], 4);
+  for (const c of colorsFor(count)) void seating.person(c); // start downloading the rest
+} else {
+  renderSetup();
+}
+await seating.ready();
 // Compile every shader up front so the opening scene does not stutter.
 await stage.renderer.compileAsync(stage.scene, stage.camera).catch(() => {});
 document.body.classList.add("ready");
 
-// Opening scene. Skipped for tests (?speed), ?intro=0 and reduced-motion users.
-const introOn =
-  !(speedParam > 0) && params.get("intro") !== "0" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
 if (introOn) {
   show("intro");
   document.body.classList.add("cine");
-  const intro = tableRoom.play(
+  const intro = playIntro(
+    stage,
+    seating,
+    stage.room,
     () => document.body.classList.add("cine-title"),
-    () => document.body.classList.remove("cine-title"),
+    () => {
+      document.body.classList.remove("cine-title");
+      backdrop(colorsFor(count), false); // the other players take their seats as the camera rises
+    },
   );
   const skip = () => intro.skip();
   $("skipIntro").addEventListener("click", skip);

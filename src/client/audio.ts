@@ -107,6 +107,12 @@ export const sfx = {
     noise(0.07, 320 + Math.random() * 80, 0.22);
     tone(90 + Math.random() * 20, 0.06, "sine", 0.08);
   },
+  /** Latch click and a creaking hinge. */
+  door() {
+    noise(0.04, 2600, 0.25);
+    tone(180, 0.7, "sawtooth", 0.04, 0.05, 140);
+    tone(230, 0.5, "triangle", 0.03, 0.15, 190);
+  },
   /** Chair legs scraping across the rug. */
   chair() {
     for (let i = 0; i < 9; i++) noise(0.08, 500 + Math.random() * 300, 0.12, i * 0.08);

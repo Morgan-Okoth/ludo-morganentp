@@ -9,6 +9,7 @@ import { sfx } from "./audio";
 import { TILE_TOP } from "./board3d";
 import type { Hud } from "./hud";
 import { COLOR_HEX } from "./layout";
+import type { Seating } from "./people";
 import { Pawns } from "./tokens";
 import type { Stage } from "./stage";
 
@@ -36,8 +37,8 @@ export class GameView {
   private lastMine = false;
   /** Whether this client may act for a colour. */
   canAct: (color: Color) => boolean = () => false;
-  /** Rotate the camera to whoever is playing (local hot-seat with several humans). */
-  followTurn = false;
+  /** The people at the table; set by main. */
+  seating: Seating | null = null;
   onRoll: () => void = () => {};
   onMove: (token: number) => void = () => {};
   onGameOver: (state: GameState) => void = () => {};
@@ -70,7 +71,10 @@ export class GameView {
     for (const c of state.players) state.steps[c]!.forEach((s, i) => (this.pawns!.get(c, i).step = s));
     this.pawns.snapAll();
     this.parkDie(currentColor(state), state.die ?? 6);
-    void this.stage.lookFrom(viewColor ? armOf(viewColor) : 0, true);
+    // You sit at your own colour's place; your own body is hidden so it never blocks the view.
+    const names = Object.fromEntries(seats.map((s) => [s.color, s.name]));
+    this.seating?.set(state.players, state.arms, { hide: viewColor, names, labels: true });
+    void this.stage.lookFrom(viewColor ? armOf(viewColor) : 0, true, 1600);
     this.hud.setPlayers(seats, state);
     this.present(state);
   }
@@ -78,6 +82,8 @@ export class GameView {
   /** Board preview behind the menu: pawns sitting in their yards. */
   preview(colors: Color[], arms: number) {
     this.stage.setLayout(arms);
+    this.seating?.set(colors, arms);
+    this.seating?.setActive(null);
     if (this.pawns) this.stage.world.remove(this.pawns.group);
     this.pawns = new Pawns(this.stage.layout, this.stage.assets.pawn, colors, this.stage.fx);
     this.pawns.snapAll();
@@ -182,6 +188,7 @@ export class GameView {
     this.stage.die.ready = false;
     this.hud.setRollEnabled(false);
 
+    this.seating?.setActive(state.phase === "over" ? null : currentColor(state));
     if (this.stage.board) {
       this.stage.board.yardGlow.forEach((g, arm) => {
         const on = state.phase !== "over" && armOf(currentColor(state)) === arm;
@@ -197,7 +204,6 @@ export class GameView {
 
     const color = currentColor(state);
     const mine = this.canAct(color);
-    if (this.followTurn && mine && armOf(color) !== this.stage.viewArm) void this.stage.lookFrom(armOf(color));
     if (mine && !this.lastMine) sfx.yourTurn();
     this.lastMine = mine;
     this.parkDieIfIdle(color);

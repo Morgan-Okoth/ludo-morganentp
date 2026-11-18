@@ -2,8 +2,6 @@
   "models": [
     "chair",
     "dicecup",
-    "lady",
-    "partner",
     "pawn",
     "people/blue",
     "people/green",

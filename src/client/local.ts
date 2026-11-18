@@ -24,7 +24,6 @@ export class LocalMatch {
     this.state = createGame(seats.map((s) => s.color));
     const humans = seats.filter((s) => !s.ai);
     view.canAct = (c) => !this.isAi(c);
-    view.followTurn = humans.length > 1;
     view.onRoll = () => this.humanRoll();
     view.onMove = (i) => this.humanMove(i);
     view.begin(this.state, seats, humans[0]?.color ?? null);

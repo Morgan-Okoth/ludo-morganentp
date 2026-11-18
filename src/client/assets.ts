@@ -45,25 +45,22 @@ async function loadGltf(name: string): Promise<THREE.Group | null> {
   return (await loadFull(name))?.scene ?? null;
 }
 
-/** A rigged character (KayKit, CC0) with its animation clips. */
+/** A rigged person (Ara 3D Gen / MakeHuman, CC0) with their animation clips. */
 export interface Character {
   scene: THREE.Group;
   clips: THREE.AnimationClip[];
 }
 
-/** Characters load in the background so the menu is not delayed by them. */
-export async function loadCharacters(): Promise<{ lady: Character | null; partner: Character | null }> {
-  const [lady, partner] = await Promise.all([loadFull("lady"), loadFull("partner")]);
-  const wrap = (g: GLTF | null): Character | null => {
-    if (!g) return null;
-    shadowed(g.scene);
-    g.scene.traverse((o) => {
-      // Skinned meshes move outside their bind-pose bounds while animating.
-      if ((o as THREE.SkinnedMesh).isSkinnedMesh) o.frustumCulled = false;
-    });
-    return { scene: g.scene, clips: g.animations };
-  };
-  return { lady: wrap(lady), partner: wrap(partner) };
+/** Loads the seated player for a colour from /models/people (metres, feet at y = 0). */
+export async function loadPerson(color: string): Promise<Character | null> {
+  const g = await loadFull(`people/${color}`);
+  if (!g) return null;
+  shadowed(g.scene);
+  g.scene.traverse((o) => {
+    // Skinned meshes move outside their bind-pose bounds while animating.
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh) o.frustumCulled = false;
+  });
+  return { scene: g.scene, clips: g.animations };
 }
 
 /** Scales and moves an object so it is `height` tall with its base at y = 0. */
@@ -125,7 +122,8 @@ export async function loadAssets(): Promise<Assets> {
     loadGltf("chair"),
   ]);
   const chairWood = new THREE.MeshStandardMaterial({ color: "#6b3f1d", roughness: 0.45 });
-  const velvet = new THREE.MeshStandardMaterial({ color: "#8e1b2e", roughness: 0.8 });
+  const velvet = new THREE.MeshStandardMaterial({ color: "#8e1b2e", roughness: 0.8 });
+
 
   const clayPawn = pawnScene ? singleGeometry(pawnScene, 1) : null;
   const fallbackPawn = mergeVertices(pawnGeometry(), 1e-4);
@@ -141,6 +139,14 @@ export async function loadAssets(): Promise<Assets> {
       shadowed(trophyScene ? normalize(trophyScene.clone(true), 1.6) : trophyGroup(gold)),
     dicecup: () =>
       shadowed(cupScene ? normalize(cupScene.clone(true), 1.0) : new THREE.Mesh(diceCupGeometry(), leather)),
-    chair: () => shadowed(chairScene ? normalize(chairScene.clone(true), 1.0) : chairGroup(chairWood, velvet)),
+    chair: () => {
+      if (!chairScene) return shadowed(chairGroup(chairWood, velvet));
+      // Clay's chair came back facing -Z (backrest measured at +Z); turn it to face +Z.
+      const outer = new THREE.Group();
+      const inner = normalize(chairScene.clone(true), 1.0);
+      inner.rotation.y = Math.PI;
+      outer.add(inner);
+      return shadowed(outer);
+    },
   };
 }

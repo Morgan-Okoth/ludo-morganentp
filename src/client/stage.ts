@@ -203,16 +203,20 @@ export class Stage {
     this.decor.add(cup);
   }
 
-  /** Camera framing so the whole board fits on screen, viewed from `arm`'s side. */
+  /**
+   * Seat view: as if sitting at `arm`'s place at the table, looking across
+   * at everyone else. Low and fixed; it does not follow the turn.
+   * Wide screens keep the neighbouring players in frame; portrait screens
+   * keep the board's width and look down more steeply.
+   */
   private viewFor(arm: number) {
-    const l = this.layout;
-    const t = l.theta(arm);
+    const t = this.layout.theta(arm);
     const aspect = this.camera.aspect;
-    // Board radius in world units is about 15.5 (see setLayout).
-    const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const dist = (15.5 * (aspect < 1 ? 1.02 : 1.08)) / (tanHalf * Math.min(1, aspect));
-    // Portrait screens look more top-down so the board uses the width.
-    const elev = aspect < 1 ? 1.22 : 0.98; // radians above the table
+    const tanH = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * aspect;
+    const portrait = aspect < 1;
+    const elev = portrait ? 1.0 : 0.36; // radians above the table
+    const halfWidth = portrait ? 17 : 40; // board only, or board plus the seats beside you
+    const dist = THREE.MathUtils.clamp(halfWidth / tanH, 34, 120);
     return new THREE.Vector3(Math.cos(t) * Math.cos(elev) * dist, Math.sin(elev) * dist, Math.sin(t) * Math.cos(elev) * dist);
   }
 
@@ -226,8 +230,9 @@ export class Stage {
    */
   private menuPos() {
     const aspect = this.camera.aspect;
-    const dist = Math.min(130, 92 * Math.pow(Math.max(1, 1.5 / aspect), 0.5));
-    const elev = aspect < 1 ? 0.62 : 0.42;
+    const portrait = aspect < 1;
+    const elev = portrait ? 0.8 : 0.42;
+    const dist = portrait ? 100 : 90;
     return new THREE.Vector3(0, Math.sin(elev) * dist, Math.cos(elev) * dist);
   }
 
@@ -237,12 +242,15 @@ export class Stage {
 
   menuView(animate = true, durationMs = 900) {
     this.mode = "menu";
+    this.lamp.visible = true;
     return this.moveTo(this.menuPos(), animate, durationMs);
   }
 
   lookFrom(arm: number, animate = true, durationMs = 900) {
     this.mode = "game";
     this.viewArm = arm;
+    // The steep portrait seat view looks straight through the shade; the spotlight stays on.
+    this.lamp.visible = false;
     return this.moveTo(this.viewFor(arm), animate, durationMs);
   }
 
@@ -280,6 +288,8 @@ export class Stage {
     const w = this.host.clientWidth || window.innerWidth;
     const h = this.host.clientHeight || window.innerHeight;
     this.camera.aspect = w / h;
+    // A wider lens on portrait screens keeps the camera inside the room.
+    this.camera.fov = w < h ? 55 : 42;
     // Nudge the picture up so the bottom HUD does not cover the near board edge.
     this.camera.setViewOffset(w, h, 0, h * 0.045, w, h);
     this.camera.updateProjectionMatrix();
